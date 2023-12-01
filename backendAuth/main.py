@@ -9,7 +9,7 @@ from collections import Counter
 import hashlib
 import time
 from datetime import datetime, timezone
-import functional as fu
+
 
 
 app=Flask(__name__)
@@ -33,7 +33,7 @@ weeklyStats={
   "Friday":0,
   "Saturday":0,
 }
-
+premium=1 #0 off 1 on
 #----------fungsional helper
 
 def stringhash(input_data:str): #-> string 
@@ -78,10 +78,11 @@ def isRegistered(password:str,username:str,email:str):
     cur.execute("SELECT email FROM authorizationBasic WHERE email=?",(email,))
     if cur.fetchone()==None:
       cur.execute("INSERT INTO authorizationBasic(username,password,email) VALUES(?,?,?)",(username,password,email))
-      
+      cur.execute("SELECT userId FROM  authorizationBasic where username=? AND email=?",(username,email))
+      data=cur.fetchone()[0]
       conn.commit()
       conn.close()
-      return [True,"account registered"]
+      return [data,"account registered"]
     else:
       conn.close()
       return [False,"account already registered"]
@@ -97,8 +98,8 @@ def insertFirst(userId,username,email,firstComeday,isPrem,firstComeUnix,deadline
 def insetAccountStat(userId):
   conn=sqlite3.connect("DB.db")
   cur=conn.cursor()
-  activeDays=0
-  ActiveDayStreak=0
+  activeDays=1
+  ActiveDayStreak=1
   totalReplay=0
   points=0
   playedSong=0
@@ -111,7 +112,7 @@ def insetTempDataStat(userId):
   global listOfDays
   conn=sqlite3.connect("DB.db")
   cur=conn.cursor()
-  tempActiveDayStreak=0
+  tempActiveDayStreak=1
   currentDayUnix=getStartingDayUnix()
   startDay=getStartingDayUnix()
   weeklyTarget=0
@@ -124,7 +125,33 @@ def insetTempDataStat(userId):
   conn.commit()
   conn.close()
 
+def premiumData(userId,email):
+  #request to main server premium~~~~~
+  conn=sqlite3.connect("DB.db")
+  cur=conn.cursor()
+  cur.execute("SELECT isPrem,firstComeUnix,deadlineAccesUnix FROM accountData WHERE userId=?",(userId,))
+  data=cur.fetchone()
+  conn.close()
+  permissionStatus=1 #-1 not prohibited, 0 ok, 1 premium
+  currentUnix=getUnixNow
+  if premium==1:
+    if data[2]<=currentUnix:
+      if data[0]==0:
+        permissionStatus=0
+      else:
+        permissionStatus=1
+    else:
+      if data[0]==1:
+        #send to prem db request to revoke
+        permissionStatus=-1
+      else:
+        permissionStatus=-1
+  data=list(data)
+  data[2]= (datetime.fromtimestamp(data[2])).strftime("%Y-%m-%d ")
 
+
+  data.append(permissionStatus)
+  return data
 #-------------------atomic functional stat--------------------
 def setNewPlayedSongData(userId):
   conn=sqlite3.connect("DB.db")
@@ -275,7 +302,16 @@ def setNewweeklyStatData(userId):
     
   conn.commit()
   conn.close()
-
+def getMyData(userId):
+  conn=sqlite3.connect("DB.db")
+  cur=conn.cursor()
+  cur.execute("SELECT weeklyTarget,weeklyProgress, weeklyStat  FROM tempDataStat WHERE userId=?" ,(userId,))
+  data1=list(cur.fetchone())
+  cur.execute("SELECT activeDays,activeDayStreak, points, playedSong ,playedIelts,totalReplay   FROM accountStatistic WHERE userId=?" ,(userId,))
+  data2=list(cur.fetchone())
+  data3=data1+data2
+  conn.close()
+  return data3
 #-------------------end atomic functional stat--------------------
 #------------end fungsional personalisasi---------
 #-----------------fungsional umum-----
@@ -382,11 +418,6 @@ def give():
   return "ok",200
 #-----------END TESTING AREA--------------------------
 
-#------------------------------
-@app.before_request
-def load_user():
-  if request.endpoint=="login":
-    pass
 #-----------MANDATORY AREA---------------------------
 @app.route("/updateDataBySong",methods=["POST"])
 def updateDataBySong():
@@ -404,19 +435,7 @@ def updateDataBySong():
   
   setNewPlayedSongData(userId)
   return "whatever",200
-  '''
-    setNewweeklyStatData(userId)
-    setNewWeeklyProgressData(userId)
-    setNewReplayData(userId,replays)
-    setNewPointsData(userId,points)
-    setNewActiveDayStreakData(userId)
-    setNewActiveDayData(userId)
-    setNewPlayedSongData(userId)
-  ###################
-    setNewPlayedIeltsData(userId)
-    setNewPlayedSongData(userId)
-    '''
-  return "wait"
+
 @app.route("/updateDataByIelts",methods=["POST"])
 def updateDataByIelts():
   #[userId,points,replays]
@@ -433,24 +452,13 @@ def updateDataByIelts():
   
   setNewPlayedIeltsData(userId)
   return "whatever",200
-  '''
-    setNewweeklyStatData(userId)
-    setNewWeeklyProgressData(userId)
-    setNewReplayData(userId,replays)
-    setNewPointsData(userId,points)
-    setNewActiveDayStreakData(userId)
-    setNewActiveDayData(userId)
-  ###################
-    setNewPlayedIeltsData(userId)
-    setNewPlayedSongData(userId)
-    '''
- # return "wait"
+
 @app.route("/giveTop20",methods=["GET"])
 def giveTop20():
   return showTop20()
 @app.route("/giveWhereAmI",methods=["POST"])
 def giveTopMe():
-  userId=request.data
+  userId=int(request.data)
  # print(userId)
  # print("res",json.dumps(whereAmI(userId)))
   return json.dumps(whereAmI(userId))
@@ -468,10 +476,20 @@ def login():
   conn.close()
   if result==None:
     return "invalid login",403
-  return json.dumps([result[0],result[3]]),200
+  userId=result[0]
+  email=result[3]
+  return json.dumps([userId,email]),200
   
-  
-  return "wait"
+@app.route("/premium",methods=["POST"])
+def premium():
+  #[userId,email]
+  data=json.loads(request.data)
+  return json.dumps(premiumData(data[0],data[1]))
+@app.route("/getMyData",methods=["POST"])
+def getMyDatas():
+  #userId
+  userId=int(request.data)
+  return json.dumps(getMyData(userId))
 @app.route("/register",methods=["POST"])
 def register():
   #[email.username,password]
@@ -481,7 +499,7 @@ def register():
   email=data[0]
   
   regis=isRegistered(password,username,email)
-  if(regis[0]==True):
+  if(regis[0]!=False):
     userId=getUserIdFromAuth(username,email)
     firstComeDay=getDateNow()
     firstComeUnix=getUnixNow()
