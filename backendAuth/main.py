@@ -33,9 +33,59 @@ weeklyStats={
   "Friday":0,
   "Saturday":0,
 }
-premium=1 #0 off 1 on
-#----------fungsional helper
 
+#----------fungsional helper
+def updatePremium(email,cur):
+  
+  #cur.execute("UPDATE accountData SET isPrem=1 WHERE userId=11")
+  currentUnix=getUnixNow()
+  cur.execute("SELECT deadlineAccesUnix FROM accountData WHERE email=?",(email,))
+  deadlineAccesUnix=cur.fetchone()[0]
+  if deadlineAccesUnix<=currentUnix:
+    currentUnix+=(3600*24*31)
+    cur.execute("UPDATE accountData SET isPrem=1,deadlineAccesUnix=? WHERE email=?",(currentUnix,email))
+    
+  else:
+    deadlineAccesUnix+=(3600*24*31)
+    cur.execute("UPDATE accountData SET isPrem=1,deadlineAccesUnix=? WHERE email=?",(deadlineAccesUnix,email))
+    
+  
+def genRedeem():
+   secret="TOMAENETLASIRSMENG"
+   seed=list("A1B2C3D4E5F6QRSTUV7WXG7H89IJKLMGNOPYZ")
+   random.shuffle(seed)
+   seed[random.randint(0,14)]=secret[random.randint(0,15)]
+   seeds="".join(seed)
+   conn=sqlite3.connect("DB.db")
+   cur=conn.cursor()
+   cur.execute("INSERT INTO redeemtables (redeemcode,isUsed,generatedTimeUnix,expiredTimeUnix) VALUES (?,?,?,?)",(seeds[:16],0,getUnixNow(),getUnixNow()+(3600*48)))
+   conn.commit()
+   conn.close()
+   print(seeds[:16])
+   return seeds[:16]
+def delRedeem():
+   conn=sqlite3.connect("DB.db")
+   cur=conn.cursor()
+   cur.execute("DELETE FROM redeemtables WHERE isUsed=1 OR expiredTimeUnix<? ",(getUnixNow(),))
+   conn.commit()
+   conn.close()
+def validateRedeem(email:str,redeem:str):
+  conn=sqlite3.connect("DB.db")
+  cur=conn.cursor()
+  cur.execute("SELECT * FROM redeemtables WHERE redeemcode=?",(redeem,))
+  result=cur.fetchone()
+
+  if result==None:
+    return ["redeem code not valid or already used",-1]
+  elif result[5]<getUnixNow():
+    return ["redeem code expired",0]
+  else:
+    cur.execute("DELETE FROM redeemtables WHERE redeemcode=?",(redeem,))
+    updatePremium(email,cur)
+    conn.commit() 
+    conn.close()
+    return ["redeem code valid",1]
+   
 def stringhash(input_data:str): #-> string 
   input_data = input_data.encode('utf-8')
   sha256_hash = hashlib.sha256(input_data).hexdigest()
@@ -127,18 +177,26 @@ def insetTempDataStat(userId):
 
 def premiumData(userId,email):
   #request to main server premium~~~~~
+  premium=1  #0 off 1 on
+  print(userId,email)
   conn=sqlite3.connect("DB.db")
   cur=conn.cursor()
   cur.execute("SELECT isPrem,firstComeUnix,deadlineAccesUnix FROM accountData WHERE userId=?",(userId,))
   data=cur.fetchone()
+  
   conn.close()
   permissionStatus=1 #-1 not prohibited, 0 ok, 1 premium
-  currentUnix=getUnixNow
+  currentUnix=getUnixNow()
+  print(data,currentUnix)
   if premium==1:
-    if data[2]<=currentUnix:
+    print("aku nyala kok")
+    if currentUnix<=data[2]:
+      
       if data[0]==0:
+        print("aku juga nyala")
         permissionStatus=0
       else:
+        print("awawa",data[0])
         permissionStatus=1
     else:
       if data[0]==1:
@@ -151,6 +209,7 @@ def premiumData(userId,email):
 
 
   data.append(permissionStatus)
+  print(data)
   return data
 #-------------------atomic functional stat--------------------
 def setNewPlayedSongData(userId):
@@ -298,7 +357,7 @@ def setNewweeklyStatData(userId):
     todayIndex=listOfDays.index(today)
     lastDayUnix=firstDayWeekUnix+(3600*24*(7-todayIndex))
     newWeeklyStat=json.dumps(weeklyStats)
-    cur.execute("UPDATE tempDataStat SET weeklyStat=?,firstDayWeekUnix=?,lastDayStatUnix=? WHERE userId=?",(newWeeklyStat,firstDayWeekUnix,userId,lastDayUnix))
+    cur.execute("UPDATE tempDataStat SET weeklyStat=?,firstDayWeekUnix=?,lastDayStatUnix=? WHERE userId=?",(newWeeklyStat,firstDayWeekUnix,lastDayUnix,userId))
     
   conn.commit()
   conn.close()
@@ -412,13 +471,23 @@ def get_lyric(title,difficulty): #byte
 def hello():
  
   return "hello",200
-@app.route("/me",methods=["POST"])
+@app.route("/me",methods=["GET"])
 def give():
-  time.sleep(10)
+  time.sleep(4)
   return "ok",200
 #-----------END TESTING AREA--------------------------
 
 #-----------MANDATORY AREA---------------------------
+@app.route("/getRedeemCode",methods=["GET"])
+def getRedeemCode():
+  return genRedeem(),200
+@app.route("/validateRedeemCode",methods=["POST"])
+def validateRedeemCode():
+  #{"email":"email","redeem":"redeemCode"}
+  data=json.loads(request.data)
+  redeem=data["redeem"]
+  email=data["email"]
+  return validateRedeem(email,redeem),200
 @app.route("/updateDataBySong",methods=["POST"])
 def updateDataBySong():
   #[userId,points,replays]
@@ -432,7 +501,6 @@ def updateDataBySong():
   setNewPointsData(userId,points)
   setNewActiveDayData(userId)
   setNewActiveDayStreakData(userId)
-  
   setNewPlayedSongData(userId)
   return "whatever",200
 
@@ -449,7 +517,6 @@ def updateDataByIelts():
   setNewPointsData(userId,points)
   setNewActiveDayData(userId)
   setNewActiveDayStreakData(userId)
-  
   setNewPlayedIeltsData(userId)
   return "whatever",200
 
