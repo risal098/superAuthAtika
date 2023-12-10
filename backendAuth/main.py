@@ -9,8 +9,19 @@ from collections import Counter
 import hashlib
 import time
 from datetime import datetime, timezone
+import base64
+def get_audio29(title,difficulty): #byte
+  con = sqlite3.connect("DB.db")
+  cursor = con.cursor()
+  query = "SELECT audio1,audio2,audio3 FROM %s WHERE getTitle='%s'"%(difficulty,title)
+  cursor.execute(query)
+  data = cursor.fetchone()
+  data=[(base64.b64encode(x)).decode("utf-8") for x in data]
+  print(len(data))
+  con.close()
 
-
+  return json.dumps(data)
+memosong=get_audio29("AThousandYears","Easy")
 
 app=Flask(__name__)
 CORS(app)
@@ -165,7 +176,7 @@ def insetTempDataStat(userId):
   tempActiveDayStreak=1
   currentDayUnix=getStartingDayUnix()
   startDay=getStartingDayUnix()
-  weeklyTarget=0
+  weeklyTarget=20
   weeklyProgress=0
   weeklyStat=json.dumps(weeklyStats)
   today=getDayNameNow()
@@ -178,7 +189,7 @@ def insetTempDataStat(userId):
 def premiumData(userId,email):
   #request to main server premium~~~~~
   premium=1  #0 off 1 on
-  print(userId,email)
+ # print(userId,email)
   conn=sqlite3.connect("DB.db")
   cur=conn.cursor()
   cur.execute("SELECT isPrem,firstComeUnix,deadlineAccesUnix FROM accountData WHERE userId=?",(userId,))
@@ -187,16 +198,16 @@ def premiumData(userId,email):
   conn.close()
   permissionStatus=1 #-1 not prohibited, 0 ok, 1 premium
   currentUnix=getUnixNow()
-  print(data,currentUnix)
+ # print(data,currentUnix)
   if premium==1:
-    print("aku nyala kok")
+   # print("aku nyala kok")
     if currentUnix<=data[2]:
       
       if data[0]==0:
-        print("aku juga nyala")
+   #     print("aku juga nyala")
         permissionStatus=0
       else:
-        print("awawa",data[0])
+     #   print("awawa",data[0])
         permissionStatus=1
     else:
       if data[0]==1:
@@ -209,7 +220,7 @@ def premiumData(userId,email):
 
 
   data.append(permissionStatus)
-  print(data)
+#  print(data)
   return data
 #-------------------atomic functional stat--------------------
 def setNewPlayedSongData(userId):
@@ -273,12 +284,14 @@ def setNewActiveDayStreakData(userId):
   conn.commit()
   conn.close()
 
-def setNewPointsData(userId,points):
+def setNewPointsReplayData(userId,points,replays):
   conn=sqlite3.connect("DB.db")
   cur=conn.cursor()
-  cur.execute("SELECT points FROM accountStatistic WHERE userId=?",(userId,))
-  points=cur.fetchone()[0]+points
-  cur.execute("UPDATE accountStatistic SET points=? WHERE userId=?",(points,userId))
+  cur.execute("SELECT points,totalReplay FROM accountStatistic WHERE userId=?",(userId,))
+  data=cur.fetchone()
+  points=data[0]+points
+  replays=data[1]+replays
+  cur.execute("UPDATE accountStatistic SET points=?,totalReplay=? WHERE userId=?",(points,replays,userId))
   conn.commit()
   conn.close()
 
@@ -319,7 +332,7 @@ def setNewWeeklyProgressData(userId):
     firstDayWeekUnix=getStartingDayUnix()
     cur.execute("UPDATE tempDataStat SET weeklyProgress=?,firstDayWeekUnix=? WHERE userId=?",(weeklyProgress,firstDayWeekUnix,userId))
     
-  conn.commit()
+  conn.commit()  
   conn.close()
 def setNewWeeklyTargetData(userId,newWeeklyTarget):
   #getStartingDayUnix()
@@ -329,7 +342,7 @@ def setNewWeeklyTargetData(userId,newWeeklyTarget):
   cur.execute("UPDATE tempDataStat SET weeklyTarget=? WHERE userId=?",(newWeeklyTarget,userId))
   conn.commit()
   conn.close()
-def setNewweeklyStatData(userId):
+def setNewweeklyStatProgressData(userId):
   global weeklyStats
   global listOfDays
   #getStartingDayUnix()
@@ -338,11 +351,19 @@ def setNewweeklyStatData(userId):
   conn=sqlite3.connect("DB.db")
   cur=conn.cursor()
   currentUnixDay=getUnixNow()
-  cur.execute("SELECT weeklyStat,firstDayWeekUnix FROM tempDataStat WHERE userId=?",(userId,))
+  cur.execute("SELECT weeklyStat,firstDayWeekUnix,lastDayStatUnix ,weeklyProgress FROM tempDataStat WHERE userId=?",(userId,))
   data=cur.fetchone()
   weeklyStat=json.loads(data[0])
-  cur.execute("SELECT lastDayStatUnix FROM tempDataStat WHERE userId=?",(userId,))
-  lastDayUnix=cur.fetchone()[0]
+  weeklyProgress=data[3]
+  lastDayUnix=data[2]
+  firstDayWeekUnix=data[1]
+  if currentUnixDay<=(firstDayWeekUnix+(3600*24*7)):
+    weeklyProgress=weeklyProgress+1
+    cur.execute("UPDATE tempDataStat SET weeklyProgress=? WHERE userId=?",(weeklyProgress,userId))
+  else:
+    weeklyProgress=0
+    firstDayWeekUnix=getStartingDayUnix()
+    cur.execute("UPDATE tempDataStat SET weeklyProgress=?,firstDayWeekUnix=? WHERE userId=?",(weeklyProgress,firstDayWeekUnix,userId))
   if currentUnixDay<=(lastDayUnix):
     currentDay=getDayNameNow()
     newWeeklyStat=weeklyStat
@@ -357,7 +378,7 @@ def setNewweeklyStatData(userId):
     todayIndex=listOfDays.index(today)
     lastDayUnix=firstDayWeekUnix+(3600*24*(7-todayIndex))
     newWeeklyStat=json.dumps(weeklyStats)
-    cur.execute("UPDATE tempDataStat SET weeklyStat=?,firstDayWeekUnix=?,lastDayStatUnix=? WHERE userId=?",(newWeeklyStat,firstDayWeekUnix,lastDayUnix,userId))
+    cur.execute("UPDATE tempDataStat SET weeklyStat=?,lastDayStatUnix=? WHERE userId=?",(newWeeklyStat,lastDayUnix,userId))
     
   conn.commit()
   conn.close()
@@ -455,6 +476,18 @@ def get_audio(title,audioColumn,difficulty): #byte
   con.close()
 
   return data
+def get_audio2(title,difficulty): #byte
+  con = sqlite3.connect("DB.db")
+  cursor = con.cursor()
+  query = "SELECT audio1,audio2,audio3 FROM %s WHERE getTitle='%s'"%(difficulty,title)
+  cursor.execute(query)
+  data = cursor.fetchone()
+  data=[(base64.b64encode(x)).decode("utf-8") for x in data]
+  print(len(data))
+  con.close()
+
+  return json.dumps(data)
+
 def get_lyric(title,difficulty): #byte
   con = sqlite3.connect("DB.db")
   cursor = con.cursor()
@@ -467,7 +500,7 @@ def get_lyric(title,difficulty): #byte
   return data
 #-----------------end fungsional umum-----
 #-----------TESTING AREA--------------------------
-@app.route("/",methods=["GET"])
+@app.route("/hello",methods=["GET"])
 def hello():
  
   return "hello",200
@@ -475,6 +508,9 @@ def hello():
 def give():
   time.sleep(4)
   return "ok",200
+@app.route("/getAudio29/<title>&<difficulty>",methods=["GET"])
+def getAudio29(title,difficulty):
+  return memosong
 #-----------END TESTING AREA--------------------------
 
 #-----------MANDATORY AREA---------------------------
@@ -495,10 +531,10 @@ def updateDataBySong():
   userId=data[0]
   points=data[1]
   replays=data[2]
-  setNewweeklyStatData(userId)
-  setNewWeeklyProgressData(userId)
-  setNewReplayData(userId,replays)
-  setNewPointsData(userId,points)
+  setNewweeklyStatProgressData(userId)
+ # setNewWeeklyProgressData(userId)#
+#  setNewReplayData(userId,replays)
+  setNewPointsReplayData(userId,points,replays)
   setNewActiveDayData(userId)
   setNewActiveDayStreakData(userId)
   setNewPlayedSongData(userId)
@@ -511,10 +547,10 @@ def updateDataByIelts():
   userId=data[0]
   points=data[1]
   replays=data[2]
-  setNewweeklyStatData(userId)
-  setNewWeeklyProgressData(userId)
-  setNewReplayData(userId,replays)
-  setNewPointsData(userId,points)
+  setNewweeklyStatProgressData(userId)
+  #setNewWeeklyProgressData(userId)
+ # setNewReplayData(userId,replays)
+  setNewPointsReplayData(userId,points,replays)
   setNewActiveDayData(userId)
   setNewActiveDayStreakData(userId)
   setNewPlayedIeltsData(userId)
@@ -596,10 +632,18 @@ def getBasicIelts():
   return json.dumps(data),200
 @app.route("/getAudio/<title>&<audioColumn>&<difficulty>",methods=["GET"])
 def getAudio(title,audioColumn,difficulty):
+  
   return get_audio(title,audioColumn,difficulty)
+@app.route("/getAudio2/<title>&<difficulty>",methods=["GET"])
+def getAudio2(title,difficulty):
+  data=get_audio2(title,difficulty)
+  return data
 @app.route("/getLyric/<title>&<difficulty>",methods=["GET"])
 def getLyric(title,difficulty):
-  return json.dumps(get_lyric(title,difficulty))
+  data= (get_lyric(title,difficulty))
+  if(data==None):
+    return "no lyric",404
+  return json.dumps(data)
 @app.route("/getComparisonAnswerPoint",methods=["POST"])
 def getPointsAnswer():
   #request = [[lyric1,lyric2,lyric3]
