@@ -1,0 +1,30 @@
+body {
+    background-color: rgb(240, 240, 240);
+    display: flex;
+    justify-content: center;
+    font-family: 'Inter', sans-serif;
+}
+
+.payment-section {
+    padding: 48px 0;
+}
+
+.p-title {
+    font-size: 16px;
+    color: gray; 
+    font-weight: 400;
+}
+
+.desc {
+    color: black; 
+    font-weight: 600; 
+    font-size: 16px;
+}
+
+.card {
+    /* display: flex;
+    align-items: center;
+    justify-content: center; */
+    padding: 20px;
+    border-radius: 0;
+}
